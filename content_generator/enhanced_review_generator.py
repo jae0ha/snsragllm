@@ -6,19 +6,30 @@
 
 import yaml
 import random
+import os
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from openai import OpenAI
+from dotenv import load_dotenv
 from data_sources.business_info import BusinessInfoManager, BusinessProfile
 
 class EnhancedReviewGenerator:
     def __init__(self, config_path: str = "config.yaml"):
         """향상된 리뷰 생성기 초기화"""
+        # .env 파일 로드
+        load_dotenv()
+        
+        # config.yaml 파일 로드
         with open(config_path, 'r', encoding='utf-8') as file:
             self.config = yaml.safe_load(file)
         
+        # 환경변수에서 API 키 가져오기
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY 환경변수가 설정되지 않았습니다. .env 파일을 확인해주세요.")
+        
         # OpenAI 클라이언트 설정
-        self.client = OpenAI(api_key=self.config['openai']['api_key'])
+        self.client = OpenAI(api_key=api_key)
         self.model = self.config['openai']['model']
         self.temperature = 0.8  # 더 자연스러운 변화를 위해 온도 상승
         

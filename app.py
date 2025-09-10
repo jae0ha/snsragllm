@@ -5,7 +5,9 @@ SNS 및 리뷰 콘텐츠 생성 시스템의 통합 인터페이스 - 사업장 
 
 import yaml
 import streamlit as st
+import os
 from datetime import datetime
+from dotenv import load_dotenv
 from content_generator.enhanced_sns_generator import EnhancedSNSGenerator
 from content_generator.enhanced_review_generator import EnhancedReviewGenerator
 from data_sources.business_info import BusinessInfoManager, BusinessProfile
@@ -21,10 +23,21 @@ class ContentGeneratorApp:
     def load_config(self):
         """설정 파일 로드"""
         try:
+            # .env 파일 로드
+            load_dotenv()
+            
+            # config.yaml 파일 로드
             with open('config.yaml', 'r', encoding='utf-8') as file:
-                return yaml.safe_load(file)
-        except FileNotFoundError:
-            st.error("config.yaml 파일을 찾을 수 없습니다.")
+                config = yaml.safe_load(file)
+            
+            # 환경변수에서 API 키 설정
+            api_key = os.getenv('OPENAI_API_KEY')
+            if api_key and 'openai' in config:
+                config['openai']['api_key'] = api_key
+            
+            return config
+        except Exception as e:
+            st.error(f"설정 파일 로드 중 오류 발생: {str(e)}")
             return {}
     
     def run_streamlit_app(self):
@@ -72,6 +85,28 @@ class ContentGeneratorApp:
         # 설정 탭
         with tab6:
             self.render_settings_tab()
+    
+    def render_sns_tab(self):
+        """SNS 콘텐츠 생성 탭"""
+        st.header("📱 SNS 콘텐츠 생성")
+        
+        # 사업장 선택
+        businesses = self.business_manager.get_all_businesses()
+        
+        if not businesses:
+            st.warning("먼저 사업장을 등록해주세요. '📋 사업장 관리' 탭에서 사업장을 등록할 수 있습니다.")
+            return
+        
+        business_options = {f"{info['name']} ({business_id})": info for business_id, info in businesses.items()}
+        selected_business_display = st.selectbox(
+            "콘텐츠를 생성할 사업장을 선택하세요",
+            list(business_options.keys()),
+            key="sns_business_select"
+        )
+        
+        if selected_business_display:
+            selected_business = business_options[selected_business_display]
+            self.render_sns_content_section(selected_business)
     
     def render_business_management_tab(self):
         """사업장 정보 관리 탭"""
@@ -163,127 +198,71 @@ class ContentGeneratorApp:
                     else:
                         st.error("사업장 이름과 업종은 필수입니다.")
     
-    def render_sns_tab(self):
-        """SNS 콘텐츠 생성 탭"""
-        st.header("📱 SNS 콘텐츠 생성")
+    def render_sns_content_section(self, selected_business):
+        """SNS 콘텐츠 생성 섹션"""
+        st.markdown('<h2 class="main-title">📱 SNS 콘텐츠 생성</h2>', unsafe_allow_html=True)
         
-        # 사업장 선택
-        businesses = self.business_manager.get_all_businesses()
-        if not businesses:
-            st.warning("먼저 사업장을 등록해주세요.")
-            return
-        
-        col1, col2 = st.columns([1, 2])
+        col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("생성 설정")
+            platform = st.selectbox(
+                "플랫폼 선택",
+                ["Instagram", "Facebook", "Twitter/X", "Blog"],
+                key="sns_platform"
+            )
             
-            business_options = {f"{info['name']}": business_id for business_id, info in businesses.items()}
-            selected_business_name = st.selectbox("사업장 선택", list(business_options.keys()))
-            selected_business_id = business_options[selected_business_name]
-            
-            platform = st.selectbox("플랫폼", ["Instagram", "Facebook", "Twitter/X", "Blog"])
-            
-            if platform == "Instagram":
-                post_theme = st.selectbox("게시물 테마", [
-                    "시그니처 메뉴 소개", "분위기 어필", "이벤트 홍보", 
-                    "고객 후기", "일상 공유", "신제품 출시"
-                ])
-                style = st.selectbox("스타일", ["친근한", "전문적인", "유머러스", "감성적인"])
-                specific_focus = st.text_input("특별히 강조할 점", placeholder="예: 신선한 재료, 아늑한 분위기")
-                include_hashtags = st.checkbox("해시태그 포함", value=True)
-                
-            elif platform == "Facebook":
-                post_type = st.selectbox("게시물 타입", ["홍보", "스토리텔링", "이벤트", "고객 소통"])
-                storytelling_angle = st.text_input("스토리텔링 앵글", placeholder="예: 창업 스토리, 특별한 레시피")
-                call_to_action = st.selectbox("행동 유도", ["방문 유도", "문의 유도", "공유 유도", "댓글 유도"])
-                
-            elif platform == "Blog":
-                blog_topic = st.text_input("블로그 주제", placeholder="예: 우리 카페의 특별한 원두 이야기")
-                target_keywords = st.text_input("타겟 키워드", placeholder="카페, 원두, 드립커피")
-                target_length = st.slider("목표 글자 수", 500, 3000, 2000, 500)
-            
-            generate_button = st.button("콘텐츠 생성", type="primary")
+            content_style = st.selectbox(
+                "콘텐츠 스타일",
+                ["캐주얼", "전문적", "감성적", "유머러스", "정보제공형"],
+                key="sns_style"
+            )
         
         with col2:
-            st.subheader("생성된 콘텐츠")
+            target_audience = st.selectbox(
+                "타겟 고객",
+                ["일반 고객", "젊은층(20-30대)", "중장년층(40-50대)", "가족층", "전문가층"],
+                key="sns_audience"
+            )
             
-            if generate_button:
-                with st.spinner("콘텐츠 생성 중..."):
-                    try:
-                        if platform == "Instagram":
-                            result = self.enhanced_sns_generator.create_instagram_post_with_business_info(
-                                business_id=selected_business_id,
-                                post_theme=post_theme,
-                                specific_focus=specific_focus if specific_focus else None,
-                                style=style,
-                                include_hashtags=include_hashtags
-                            )
-                            
-                            if 'error' not in result:
-                                st.success("인스타그램 포스트 생성 완료!")
-                                st.markdown("**캡션:**")
-                                st.write(result.get('caption', ''))
-                                if result.get('hashtags'):
-                                    st.markdown("**해시태그:**")
-                                    st.write(result.get('hashtags', ''))
-                                
-                                # 메타데이터 표시
-                                with st.expander("상세 정보"):
-                                    st.json(result.get('metadata', {}))
-                            else:
-                                st.error(result['error'])
-                                
-                        elif platform == "Facebook":
-                            result = self.enhanced_sns_generator.create_facebook_post_with_business_info(
-                                business_id=selected_business_id,
-                                post_type=post_type,
-                                storytelling_angle=storytelling_angle if storytelling_angle else None,
-                                call_to_action=call_to_action
-                            )
-                            
-                            if 'error' not in result:
-                                st.success("페이스북 포스트 생성 완료!")
-                                st.write(result.get('post_content', ''))
-                                
-                                with st.expander("상세 정보"):
-                                    st.json(result.get('metadata', {}))
-                            else:
-                                st.error(result['error'])
-                                
-                        elif platform == "Blog":
-                            keywords = [k.strip() for k in target_keywords.split(',') if k.strip()] if target_keywords else None
-                            result = self.enhanced_sns_generator.create_blog_post_with_business_info(
-                                business_id=selected_business_id,
-                                blog_topic=blog_topic,
-                                target_keywords=keywords,
-                                target_length=target_length
-                            )
-                            
-                            if 'error' not in result:
-                                st.success("블로그 포스트 생성 완료!")
-                                if result.get('title'):
-                                    st.markdown(f"**제목:** {result['title']}")
-                                st.write(result.get('full_content', ''))
-                                
-                                with st.expander("상세 정보"):
-                                    st.write(f"글자 수: {result.get('word_count', 0)}")
-                                    st.json(result.get('metadata', {}))
-                            else:
-                                st.error(result['error'])
-                                
-                    except Exception as e:
-                        st.error(f"콘텐츠 생성 중 오류가 발생했습니다: {str(e)}")
-            
-            # 콘텐츠 제안
-            if selected_business_id:
-                suggestions = self.enhanced_sns_generator.create_content_suggestions(selected_business_id)
-                if suggestions:
-                    st.markdown("---")
-                    st.subheader("💡 콘텐츠 제안")
-                    for i, suggestion in enumerate(suggestions[:3]):
-                        st.markdown(f"**{suggestion['platform'].title()}:** {suggestion['theme']}")
-                        st.caption(suggestion['description'])
+            include_hashtags = st.checkbox("해시태그 포함", value=True, key="sns_hashtags")
+        
+        # 커스텀 키워드 입력
+        custom_keywords = st.text_input(
+            "추가 키워드 (쉼표로 구분)",
+            placeholder="예: 신메뉴, 할인이벤트, 특별한날",
+            key="sns_keywords"
+        )
+        
+        if st.button("✨ SNS 콘텐츠 생성", key="generate_sns"):
+            with st.spinner("콘텐츠를 생성하고 있습니다..."):
+                try:
+                    keywords_list = [k.strip() for k in custom_keywords.split(',')] if custom_keywords else []
+                    
+                    # EnhancedSNSGenerator의 generate_content 메서드 사용
+                    content = self.enhanced_sns_generator.generate_content(
+                        business_profile=selected_business,
+                        platform=platform,
+                        content_style=content_style,
+                        target_audience=target_audience,
+                        custom_keywords=keywords_list,
+                        include_hashtags=include_hashtags
+                    )
+                    
+                    st.markdown("### 📝 생성된 SNS 콘텐츠")
+                    st.markdown(f"""
+                    <div class="generated-content">
+                        <h4>🎯 플랫폼: {platform}</h4>
+                        <p>{content}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # 복사 가능한 텍스트 박스
+                    st.text_area("📋 복사용 텍스트", content, height=100, key="sns_copy")
+                    
+                except Exception as e:
+                    st.error(f"콘텐츠 생성 중 오류가 발생했습니다: {str(e)}")
+                    st.error(f"오류 상세: {type(e).__name__}")
+    
     
     def render_review_tab(self):
         """리뷰 생성 탭"""

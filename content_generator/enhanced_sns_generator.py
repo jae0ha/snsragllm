@@ -5,19 +5,30 @@
 
 import yaml
 import random
+import os
 from typing import Dict, List, Optional
 from datetime import datetime
 from openai import OpenAI
+from dotenv import load_dotenv
 from data_sources.business_info import BusinessInfoManager, BusinessProfile
 
 class EnhancedSNSGenerator:
     def __init__(self, config_path: str = "config.yaml"):
         """향상된 SNS 콘텐츠 생성기 초기화"""
+        # .env 파일 로드
+        load_dotenv()
+        
+        # config.yaml 파일 로드
         with open(config_path, 'r', encoding='utf-8') as file:
             self.config = yaml.safe_load(file)
         
+        # 환경변수에서 API 키 가져오기
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY 환경변수가 설정되지 않았습니다. .env 파일을 확인해주세요.")
+        
         # OpenAI 클라이언트 설정
-        self.client = OpenAI(api_key=self.config['openai']['api_key'])
+        self.client = OpenAI(api_key=api_key)
         self.model = self.config['openai']['model']
         self.temperature = self.config['openai']['temperature']
         
@@ -384,6 +395,163 @@ class EnhancedSNSGenerator:
                 })
         
         return suggestions
+    
+    def generate_content(self, business_profile, platform="Instagram", content_style="캐주얼", 
+                        target_audience="일반 고객", custom_keywords=None, include_hashtags=True, **kwargs):
+        """
+        간단한 콘텐츠 생성 메서드 (Streamlit 앱용)
+        business_profile: dict 형태의 사업장 정보
+        """
+        try:
+            # dict 형태의 business_profile에서 정보 추출
+            business_name = business_profile.get('name', '사업장')
+            business_type = business_profile.get('type', '일반업종')
+            description = business_profile.get('description', '')
+            
+            # 직접 프롬프트 기반 생성 (더 안정적)
+            if platform == "Instagram":
+                prompt = f"""
+{business_name}의 Instagram 게시물을 작성해주세요.
+
+사업장 정보:
+- 이름: {business_name}
+- 업종: {business_type}
+- 설명: {description}
+
+요구사항:
+- 스타일: {content_style}
+- 타겟 고객: {target_audience}
+- Instagram에 적합한 매력적인 콘텐츠
+- 150자 내외로 작성
+- 자연스럽고 친근한 톤앤매너
+- 절대로 이모지를 사용하지 마세요 (😊, 🎉, ❤️, 👍 등 모든 이모티콘 금지)
+- 오직 한글과 영문, 숫자, 기본 문장부호만 사용하세요
+"""
+                if custom_keywords:
+                    prompt += f"- 다음 키워드 활용: {', '.join(custom_keywords)}\n"
+                
+                if include_hashtags:
+                    prompt += "- 관련 해시태그 5-8개 포함\n"
+                
+                prompt += "\n응답 형식: [게시물 내용]"
+                
+            elif platform == "Facebook":
+                prompt = f"""
+{business_name}의 Facebook 게시물을 작성해주세요.
+
+사업장 정보:
+- 이름: {business_name}
+- 업종: {business_type}
+- 설명: {description}
+
+요구사항:
+- 스타일: {content_style}
+- 타겟 고객: {target_audience}
+- Facebook 사용자들의 참여를 유도하는 내용
+- 200-300자 내외로 작성
+- 댓글이나 반응을 유도하는 질문 포함
+- 절대로 이모지를 사용하지 마세요 (😊, 🎉, ❤️, 👍 등 모든 이모티콘 금지)
+- 오직 한글과 영문, 숫자, 기본 문장부호만 사용하세요
+"""
+                if custom_keywords:
+                    prompt += f"- 다음 키워드 활용: {', '.join(custom_keywords)}\n"
+                
+                prompt += "\n응답 형식: [게시물 내용]"
+                
+            else:
+                # 기타 플랫폼
+                prompt = f"""
+{business_name}의 {platform} 콘텐츠를 생성해주세요.
+
+사업장 정보:
+- 이름: {business_name}
+- 업종: {business_type}
+- 설명: {description}
+
+요구사항:
+- 스타일: {content_style}
+- 타겟 고객: {target_audience}
+- {platform}에 적합한 콘텐츠
+- 절대로 이모지를 사용하지 마세요 (😊, 🎉, ❤️, 👍 등 모든 이모티콘 금지)
+- 오직 한글과 영문, 숫자, 기본 문장부호만 사용하세요
+"""
+                if custom_keywords:
+                    prompt += f"- 다음 키워드 활용: {', '.join(custom_keywords)}\n"
+                
+                prompt += f"\n자연스럽고 매력적인 {platform} 콘텐츠를 작성해주세요."
+            
+            # OpenAI API 호출
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=self.temperature,
+                max_tokens=500
+            )
+            
+            content = response.choices[0].message.content.strip()
+            
+            # 이모지 제거 후처리 (안전한 버전)
+            content = self._remove_emojis_safe(content)
+            
+            return content
+                
+        except Exception as e:
+            return f"콘텐츠 생성 중 오류가 발생했습니다: {str(e)}"
+    
+    def _remove_emojis_safe(self, text):
+        """텍스트에서 이모지만 안전하게 제거하는 함수"""
+        import re
+        
+        try:
+            # 가장 일반적인 이모지만 제거 (보수적 접근)
+            emoji_pattern = re.compile(
+                "["
+                "\U0001F600-\U0001F64F"  # 감정 이모지
+                "\U0001F300-\U0001F5FF"  # 심볼 & 그림
+                "\U0001F680-\U0001F6FF"  # 교통 & 지도
+                "\U0001F1E0-\U0001F1FF"  # 국기
+                "\U00002600-\U000026FF"  # 기타 심볼
+                "\U0001F900-\U0001F9FF"  # 추가 심볼
+                "]+", 
+                flags=re.UNICODE
+            )
+            
+            # 이모지만 제거하고 공백 정리
+            cleaned_text = emoji_pattern.sub('', text)
+            
+            # 연속된 공백만 정리 (다른 특수문자는 건드리지 않음)
+            cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+            
+            return cleaned_text
+            
+        except Exception as e:
+            # 오류 발생시 원본 텍스트 반환
+            print(f"이모지 제거 중 오류: {e}")
+            return text
+    
+    def _remove_emojis(self, text):
+        """텍스트에서 이모지를 제거하는 함수"""
+        import re
+        
+        # 이모지 패턴 정의 (유니코드 범위)
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"  # emoticons
+            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            u"\U0001F680-\U0001F6FF"  # transport & map symbols
+            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            u"\U0001F900-\U0001F9FF"  # supplemental symbols
+            u"\U0001FA70-\U0001FAFF"  # symbols and pictographs extended-a
+            "]+", flags=re.UNICODE)
+        
+        # 이모지 제거
+        text = emoji_pattern.sub('', text)
+        
+        # 연속된 공백 정리
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
 
 if __name__ == "__main__":
     # 테스트 코드
