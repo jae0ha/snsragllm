@@ -1,0 +1,127 @@
+# 환경 설정
+app:
+  name: "SNS RAG Content Generator"
+  version: "1.0.0"
+  debug: true
+  host: "0.0.0.0"
+  port: 8000
+
+# OpenAI 설정
+openai:
+  api_key: "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"  # .env 파일이나 환경변수로 설정 권장
+  model: "gpt-3.5-turbo"
+  temperature: 0.7
+  max_tokens: 2000
+
+# 벡터 데이터베이스 설정
+vectorstore:
+  type: "chroma"
+  persist_directory: "./data/vectorstore"
+  collection_name: "content_knowledge"
+  embedding_model: "text-embedding-ada-002"
+
+# 콘텐츠 생성 설정
+content_generation:
+  # SNS 플랫폼별 설정
+  platforms:
+    instagram:
+      max_caption_length: 2200
+      max_hashtags: 30
+      target_engagement_rate: 0.03
+    facebook:
+      max_post_length: 63206
+      recommended_length: 500
+      target_engagement_rate: 0.05
+    twitter:
+      max_length: 280
+      target_engagement_rate: 0.02
+    blog:
+      min_length: 1000
+      max_length: 5000
+      target_seo_score: 80
+
+  # 리뷰 생성 설정
+  reviews:
+    naver_map:
+      min_length: 50
+      max_length: 1000
+      rating_range: [3.5, 5.0]
+      authentic_tone: true
+    google_review:
+      min_length: 30
+      max_length: 500
+      rating_range: [4.0, 5.0]
+
+# 타겟 오디언스 설정
+target_audience:
+  age_groups:
+    - "10-19"
+    - "20-29" 
+    - "30-39"
+    - "40-49"
+    - "50+"
+  interests:
+    - "맛집"
+    - "카페"
+    - "여행"
+    - "쇼핑"
+    - "문화"
+    - "스포츠"
+    - "뷰티"
+    - "패션"
+
+# 키워드 및 해시태그 설정
+keywords:
+  trending_update_interval: 3600  # 1시간마다 트렌드 업데이트
+  max_keywords_per_content: 10
+  hashtag_research_sources:
+    - "naver_trending"
+    - "instagram_trending"
+    - "google_trends"
+
+# 콘텐츠 품질 관리
+quality_control:
+  spam_detection: true
+  sentiment_analysis: true
+  authenticity_check: true
+  plagiarism_check: false  # 외부 API 필요
+  
+# 데이터 소스 설정
+data_sources:
+  business_info:
+    collect_competitor_data: true
+    market_research: true
+    trend_analysis: true
+  
+  web_scraping:
+    rate_limit: 1  # 초당 요청 수
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    timeout: 30
+
+# 로깅 설정
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "./logs/app.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# 캐시 설정
+cache:
+  enabled: true
+  ttl: 3600  # 1시간
+  max_size: 1000
+
+# 보안 설정
+security:
+  api_key_required: true
+  rate_limiting:
+    requests_per_minute: 60
+    requests_per_hour: 1000
+  
+# 윤리적 가이드라인
+ethics:
+  prevent_misinformation: true
+  respect_platform_policies: true
+  transparency_required: true
+  human_oversight: true
